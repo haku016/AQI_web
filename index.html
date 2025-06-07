@@ -1,0 +1,307 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+  <meta charset="UTF-8" />
+  <title>Biểu đồ AQI theo giờ</title>
+  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+  <style>
+    body {
+      font-family: "Segoe UI", sans-serif;
+      margin: 0;
+      padding: 0;
+      background: #f4f6f8;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+    }
+
+    h2 {
+      margin: 30px 0 10px;
+      color: #222;
+    }
+
+    #chart-container {
+      background: #fff;
+      border-radius: 16px;
+      padding: 20px 30px;
+      box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
+      width: 90%;
+      max-width: 900px;
+    }
+
+    canvas {
+      margin-top: 20px;
+    }
+
+    #aqi-info {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      background: rgba(25, 25, 35, 0.75);
+      border-radius: 16px;
+      padding: 20px;
+      margin-top: 30px;
+      width: 90%;
+      max-width: 900px;
+      color: #fff;
+      box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+    }
+
+    .info-left {
+      flex: 1;
+    }
+
+    .top-row, .bottom-row {
+      display: flex;
+      justify-content: space-around;
+      margin-bottom: 10px;
+    }
+
+    .label {
+      font-size: 14px;
+      color: #ccc;
+      text-align: center;
+    }
+
+    .value {
+      font-size: 22px;
+      font-weight: bold;
+      text-align: center;
+    }
+
+    .live-badge {
+      font-size: 12px;
+      background: #ff4d4f;
+      color: white;
+      padding: 4px 10px;
+      border-radius: 12px;
+      margin-right: 12px;
+      align-self: center;
+      height: 26px;
+      display: flex;
+      align-items: center;
+    }
+
+    .aqi-box {
+      width: 100px;
+      height: 100px;
+      background: limegreen;
+      border-radius: 10px;
+      font-size: 20px;
+      font-weight: bold;
+      color: #000;
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      text-align: center;
+    }
+  </style>
+</head>
+<body>
+  <!-- Thông tin AQI -->
+  <div id="aqi-info">
+    <div class="info-left">
+      <div class="top-row">
+        <div>
+          <div class="label">AQI Live</div>
+          <div id="aqi-live" class="value">0</div>
+        </div>
+        <div>
+          <div class="label">AQI Predict Today</div>
+          <div id="aqi-predict" class="value">0</div>
+        </div>
+      </div>
+      <div class="bottom-row">
+        <span class="live-badge">🔴 LIVE</span>
+        <div>
+          <div class="label">PM1</div>
+          <div id="pm1" class="value">0</div>
+        </div>
+        <div>
+          <div class="label">PM10</div>
+          <div id="pm10" class="value">0</div>
+        </div>
+        <div>
+          <div class="label">PM2.5</div>
+          <div id="pm25" class="value">0</div>
+        </div>
+        <div>
+          <div class="label">CO</div>
+          <div id="co" class="value">0</div>
+        </div>
+        <div>
+          <div class="label">NO₂</div>
+          <div id="no2" class="value">0</div>
+        </div>
+      </div>
+    </div>
+    <div class="aqi-box" id="aqi-grade">Good</div>
+  </div>
+
+  <h2>Biểu đồ AQI theo giờ (Thực tế & Dự đoán)</h2>
+  <div id="chart-container">
+    <canvas id="aqiChart"></canvas>
+  </div>
+
+  <script type="module">
+    import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-app.js";
+    import { getDatabase, ref, onValue } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-database.js";
+
+    // Cấu hình Firebase
+    const firebaseConfig = {
+      apiKey: "AIzaSyDsXhXTM5Vcq-Zl13m_Mke65x_4aTkSfZE",
+      authDomain: "aqproject-62f54.firebaseapp.com",
+      databaseURL: "https://aqproject-62f54-default-rtdb.firebaseio.com",
+      projectId: "aqproject-62f54",
+      storageBucket: "aqproject-62f54.appspot.com",
+      messagingSenderId: "480496315879",
+      appId: "1:480496315879:web:5d5c65a7496f8f24472142",
+      measurementId: "G-FRRXQY8ZF7"
+    };
+
+    // Khởi tạo Firebase
+    try {
+      const app = initializeApp(firebaseConfig);
+      console.log("Firebase khởi tạo thành công");
+      const db = getDatabase(app);
+
+      // === CHART SETTINGS ===
+      const hourRef    = ref(db, "hour_val/AQI");
+      const predictRef = ref(db, "predict/AQI");
+      const valRef     = ref(db, "value/value");
+
+      const ctx = document.getElementById("aqiChart").getContext("2d");
+      const labels = Array.from({ length: 24 }, (_, i) => `${i}h`);
+      const initialData = Array(24).fill(0);
+
+      const aqiChart = new Chart(ctx, {
+        type: "line",
+        data: {
+          labels: labels,
+          datasets: [
+            {
+              label: "AQI Thực tế",
+              data: initialData,
+              borderColor: "rgb(0, 172, 193)",
+              backgroundColor: "rgba(0, 172, 193, 0.1)",
+              tension: 0.4,
+              pointStyle: "circle",
+              pointRadius: 4,
+              pointHoverRadius: 6,
+              fill: false,
+            },
+            {
+              label: "AQI Dự đoán",
+              data: initialData,
+              borderColor: "rgb(255, 99, 132)",
+              backgroundColor: "rgba(255, 99, 132, 0.1)",
+              tension: 0.4,
+              pointStyle: "rect",
+              pointRadius: 4,
+              pointHoverRadius: 6,
+              fill: false,
+            },
+          ],
+        },
+        options: {
+          responsive: true,
+          plugins: {
+            legend: { position: "top", labels: { usePointStyle: true } },
+            title: {
+              display: true,
+              text: "Biểu đồ AQI Giờ theo ngày",
+              font: { size: 18, weight: "bold" },
+            },
+            tooltip: { mode: "index", intersect: false },
+          },
+          interaction: { mode: "nearest", axis: "x", intersect: false },
+          scales: {
+            y: { beginAtZero: true, title: { display: true, text: "Chỉ số AQI" } },
+            x: { title: { display: true, text: "Giờ trong ngày" } },
+          },
+        },
+      });
+
+      function updateChartLine(datasetIndex, dataObj) {
+        const dataArray = Array.from({ length: 24 }, (_, i) => dataObj[`AQI_${i}`] ?? 0);
+        aqiChart.data.datasets[datasetIndex].data = dataArray;
+        aqiChart.update();
+      }
+
+      // === AQI INFO SETTINGS ===
+      let liveAQI    = 0;
+      let predictAQI = 0;
+
+      function updateAQIInfo(live, predict) {
+        document.getElementById("aqi-live").innerText    = live;
+        document.getElementById("aqi-predict").innerText = predict;
+
+        const aqiBox = document.getElementById("aqi-grade");
+        let status = "Unknown", color = "gray";
+
+        if (live <= 50)        { status = "Good";                 color = "limegreen"; }
+        else if (live <= 100)  { status = "Moderate";             color = "gold";      }
+        else if (live <= 150)  { status = "Unhealthy Sensitive";  color = "orange";    }
+        else if (live <= 200)  { status = "Unhealthy";            color = "red";       }
+        else if (live <= 300)  { status = "Very Unhealthy";       color = "purple";    }
+        else                   { status = "Hazardous";            color = "maroon";    }
+
+        aqiBox.innerText            = status;
+        aqiBox.style.background     = color;
+      }
+
+      // === FIREBASE LISTENERS ===
+
+      // Hourly chart values
+      onValue(hourRef, (snap) => {
+        const data = snap.val();
+        if (data) updateChartLine(0, data);
+      });
+
+      // Chart predicted line
+      onValue(predictRef, (snap) => {
+        const data = snap.val();
+        if (data) updateChartLine(1, data);
+      });
+
+      // Sensor values (PM1, PM2.5, etc)
+      onValue(valRef, (snap) => {
+        const data = snap.val();
+        if (data) {
+          document.getElementById("pm1").innerText  = data.pm1  ?? 0;
+          document.getElementById("pm10").innerText = data.pm10 ?? 0;
+          document.getElementById("pm25").innerText = data.pm25 ?? 0;
+          document.getElementById("co").innerText   = data.co   ?? 0;
+          document.getElementById("no2").innerText  = data.no2  ?? 0;
+        }
+      });
+
+      // NEW: AQI Live
+      const liveRef  = ref(db, "AQI_live");
+      onValue(liveRef, (snap) => {
+        const v = snap.val();
+        if (v != null) {
+          liveAQI = v;
+          updateAQIInfo(liveAQI, predictAQI);
+        }
+      });
+
+      // NEW: Today's AQI prediction
+      const todayRef = ref(db, "AQI_predict_today/AQI");
+      onValue(todayRef, (snap) => {
+        const v = snap.val();
+        if (v != null) {
+          predictAQI = v;
+          updateAQIInfo(liveAQI, predictAQI);
+        }
+      });
+
+      // Initial draw
+      updateAQIInfo(liveAQI, predictAQI);
+
+    } catch (error) {
+      console.error("Lỗi khởi tạo Firebase:", error);
+    }
+  </script>
+</body>
+</html>
