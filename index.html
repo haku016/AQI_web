@@ -272,7 +272,17 @@
     });
     onValue(ref(db, "hour_val/pm10"), snap => {
       const data = snap.val();
-      if (data) pmChart.data.datasets[1].data = extractSeries(data, "pm10");
+      if (data) pmChart.data.datasets[2].data = extractSeries(data, "pm10");
+      pmChart.update();
+    });
+    onValue(ref(db, "hour_val/CO"), snap => {
+      const data = snap.val();
+      if (data) pmChart.data.datasets[3].data = extractSeries(data, "CO");
+      pmChart.update();
+    });
+    onValue(ref(db, "hour_val/NO2"), snap => {
+      const data = snap.val();
+      if (data) pmChart.data.datasets[4].data = extractSeries(data, "NO2");
       pmChart.update();
     });
 
